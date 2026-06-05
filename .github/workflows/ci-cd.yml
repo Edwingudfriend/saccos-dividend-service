@@ -1,0 +1,51 @@
+name: CI/CD - Dividend Service
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'saccos-dividend-service/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'saccos-dividend-service/**'
+
+env:
+  SERVICE_NAME: saccos-dividend-service
+  IMAGE_NAME: mifos-saccos-dividend-service
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build with Maven
+        working-directory: saccos-dividend-service
+        run: mvn clean package -DskipTests
+
+      - name: Build Docker Image
+        working-directory: saccos-dividend-service
+        run: docker build -t ${{ env.IMAGE_NAME }}:latest .
+
+      - name: Deploy to Server
+        if: github.ref == 'refs/heads/main'
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.CONTABO_HOST }}
+          username: ${{ secrets.CONTABO_USER }}
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          script: |
+            cd ~/mifos
+            git pull origin main
+            cd services/saccos-dividend-service
+            docker build -t mifos-saccos-dividend-service:latest .
+            docker compose -f ~/mifos/docker-compose-multi-env-hybrid.yml up -d saccos-dividend-service
+            echo "✅ Dividend service deployed"
